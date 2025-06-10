@@ -24,9 +24,30 @@ A professional-grade web application that transforms text content into stunning,
 pip install -r requirements.txt
 ```
 
-2. Run the application:
+2. Set up the Python path:
+```bash
+source setup_env.sh
+```
+
+3. Run the application:
 ```bash
 streamlit run app.py
+```
+
+### Running Tests
+
+To run the test suite:
+
+```bash
+source setup_env.sh  # Set up proper Python path
+python -m pytest tests/
+```
+
+To run the comprehensive tester:
+
+```bash
+source setup_env.sh  # Set up proper Python path
+python comprehensive_tester.py
 ```
 
 3. Open your browser to `http://localhost:8501`

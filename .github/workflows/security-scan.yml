@@ -1,0 +1,68 @@
+# Daily security scanning workflow
+name: Security Scan
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  security-audit:
+    name: Daily Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install safety bandit semgrep
+    
+    - name: Run safety check
+      run: |
+        safety check --json --output safety-daily.json
+        safety check --short-report
+      continue-on-error: true
+    
+    - name: Run bandit security scan
+      run: |
+        bandit -r src/ -f json -o bandit-daily.json
+        bandit -r src/ -f txt
+      continue-on-error: true
+    
+    - name: Run Semgrep scan
+      run: |
+        semgrep --config=auto src/ --json --output=semgrep-daily.json
+        semgrep --config=auto src/
+      continue-on-error: true
+    
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: daily-security-reports
+        path: |
+          safety-daily.json
+          bandit-daily.json
+          semgrep-daily.json
+    
+    - name: Create issue on failure
+      if: failure()
+      uses: actions/github-script@v6
+      with:
+        script: |
+          github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: 'Daily Security Scan Failed',
+            body: 'The daily security scan has detected issues. Please review the workflow logs and artifacts.',
+            labels: ['security', 'automated']
+          })

@@ -1,0 +1,140 @@
+# Docker Compose for HTML Text Formatter Pro
+# Production and development configurations
+
+version: '3.8'
+
+services:
+  # Main application
+  html-formatter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: html-formatter-pro
+    ports:
+      - "8501:8501"
+    environment:
+      # Application settings
+      - PYTHONPATH=/app/src
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+      - STREAMLIT_SERVER_HEADLESS=true
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+      
+      # Security settings
+      - STREAMLIT_SERVER_ENABLE_CORS=true
+      - STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=false
+      - STREAMLIT_SERVER_MAX_UPLOAD_SIZE=10
+      
+      # Performance settings
+      - STREAMLIT_CLIENT_CACHING=true
+      - STREAMLIT_GLOBAL_DEVELOPMENT_MODE=false
+      
+      # Logging
+      - STREAMLIT_LOGGER_LEVEL=info
+    volumes:
+      # Persistent logs
+      - html-formatter-logs:/app/logs
+      # Persistent cache
+      - html-formatter-cache:/app/cache
+      # Temporary files
+      - html-formatter-tmp:/app/tmp
+    networks:
+      - html-formatter-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  # Redis for caching (optional, for production scaling)
+  redis:
+    image: redis:7-alpine
+    container_name: html-formatter-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - html-formatter-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-defaultpassword}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+  # Nginx reverse proxy (for production)
+  nginx:
+    image: nginx:alpine
+    container_name: html-formatter-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - nginx-logs:/var/log/nginx
+    networks:
+      - html-formatter-network
+    depends_on:
+      - html-formatter
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 32M
+
+# Named volumes for persistence
+volumes:
+  html-formatter-logs:
+    driver: local
+  html-formatter-cache:
+    driver: local
+  html-formatter-tmp:
+    driver: local
+  redis-data:
+    driver: local
+  nginx-logs:
+    driver: local
+
+# Custom network
+networks:
+  html-formatter-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

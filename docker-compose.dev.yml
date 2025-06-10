@@ -1,0 +1,90 @@
+# Docker Compose for development environment
+# Optimized for development workflow
+
+version: '3.8'
+
+services:
+  # Development application with hot reload
+  html-formatter-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    container_name: html-formatter-dev
+    ports:
+      - "8501:8501"
+    environment:
+      # Development settings
+      - PYTHONPATH=/app/src
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+      - STREAMLIT_SERVER_HEADLESS=false
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+      - STREAMLIT_GLOBAL_DEVELOPMENT_MODE=true
+      - STREAMLIT_SERVER_RUN_ON_SAVE=true
+      - STREAMLIT_LOGGER_LEVEL=debug
+    volumes:
+      # Mount source code for live reload
+      - .:/app
+      # Persistent development data
+      - dev-logs:/app/logs
+      - dev-cache:/app/cache
+    networks:
+      - html-formatter-dev-network
+    restart: unless-stopped
+    command: streamlit run app.py --server.port=8501 --server.address=0.0.0.0 --server.runOnSave=true
+    profiles:
+      - dev
+
+  # Test runner
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    container_name: html-formatter-tests
+    environment:
+      - PYTHONPATH=/app/src
+    volumes:
+      - .:/app
+      - test-reports:/app/test-reports
+    networks:
+      - html-formatter-dev-network
+    command: >
+      sh -c "
+        pip install -r requirements-test.txt &&
+        python -m pytest tests/ -v --tb=short --html=test-reports/report.html --self-contained-html
+      "
+    profiles:
+      - test
+
+  # Development Redis
+  redis-dev:
+    image: redis:7-alpine
+    container_name: html-formatter-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-dev-data:/data
+    networks:
+      - html-formatter-dev-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    profiles:
+      - dev
+
+# Development volumes
+volumes:
+  dev-logs:
+    driver: local
+  dev-cache:
+    driver: local
+  redis-dev-data:
+    driver: local
+  test-reports:
+    driver: local
+
+# Development network
+networks:
+  html-formatter-dev-network:
+    driver: bridge
